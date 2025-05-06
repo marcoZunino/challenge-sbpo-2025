@@ -2,6 +2,7 @@ package org.sbpo2025.challenge;
 
 import org.apache.commons.lang3.time.StopWatch;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,57 @@ public class ChallengeSolver {
 
     public ChallengeSolution solve(StopWatch stopWatch) {
         // Implement your solution here
-        return null;
+
+        List<Integer> selected_orders = new ArrayList<Integer>();
+        List<Integer> selected_aisles = new ArrayList<Integer>();
+
+        // calcular parametros U_a y U_o
+
+        List<Integer> U_a = new ArrayList<Integer>();
+        for (Map<Integer, Integer> aisle : aisles) {
+            int sum = 0;
+            for (Map.Entry<Integer, Integer> entry : aisle.entrySet()) {
+                sum += entry.getValue();
+            }
+            U_a.add(sum);
+        }
+
+        List<Integer> U_o = new ArrayList<Integer>();
+        for (Map<Integer, Integer> order : orders) {
+            int sum = 0;
+            for (Map.Entry<Integer, Integer> entry : order.entrySet()) {
+                sum += entry.getValue();
+            }
+            U_o.add(sum);
+        }
+
+
+        float best_obj = 0.0f;
+
+        for (int k=this.waveSizeUB; k >= this.waveSizeLB; k--) {
+            
+            if (k <= best_obj) {
+                break;
+            }
+
+            // IloCplex cplex = new IloCplex();
+
+
+            // selected_orders.add();
+
+        }
+
+        // seleccionar todo:
+        // for (int i=0; i < aisles.size(); i++) {
+        //     selected_aisles.add(i);            
+        // }
+        // for (int i=0; i < orders.size(); i++) {
+        //     selected_orders.add(i);
+        // }
+
+        ChallengeSolution solution = new ChallengeSolution(Set.of(selected_orders.toArray(new Integer[0])), Set.of(selected_aisles.toArray(new Integer[0])));
+
+        return solution;
     }
 
     /*
