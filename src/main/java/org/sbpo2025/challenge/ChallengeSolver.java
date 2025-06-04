@@ -1,12 +1,13 @@
 package org.sbpo2025.challenge;
 
+import com.google.ortools.Loader;
+import com.google.ortools.linearsolver.MPConstraint;
+import com.google.ortools.linearsolver.MPObjective;
+import com.google.ortools.linearsolver.MPSolver;
+import com.google.ortools.linearsolver.MPVariable;
 import org.apache.commons.lang3.time.StopWatch;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class ChallengeSolver {
@@ -19,7 +20,7 @@ public class ChallengeSolver {
     protected int waveSizeUB;
 
     public ChallengeSolver(
-            List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles, int nItems, int waveSizeLB, int waveSizeUB) {
+        List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles, int nItems, int waveSizeLB, int waveSizeUB) {
         this.orders = orders;
         this.aisles = aisles;
         this.nItems = nItems;
@@ -29,57 +30,116 @@ public class ChallengeSolver {
 
     public ChallengeSolution solve(StopWatch stopWatch) {
         // Implement your solution here
-
-        List<Integer> selected_orders = new ArrayList<Integer>();
-        List<Integer> selected_aisles = new ArrayList<Integer>();
-
-        // calcular parametros U_a y U_o
-
-        List<Integer> U_a = new ArrayList<Integer>();
-        for (Map<Integer, Integer> aisle : aisles) {
-            int sum = 0;
-            for (Map.Entry<Integer, Integer> entry : aisle.entrySet()) {
-                sum += entry.getValue();
-            }
-            U_a.add(sum);
-        }
-
-        List<Integer> U_o = new ArrayList<Integer>();
-        for (Map<Integer, Integer> order : orders) {
-            int sum = 0;
-            for (Map.Entry<Integer, Integer> entry : order.entrySet()) {
-                sum += entry.getValue();
-            }
-            U_o.add(sum);
-        }
-
-
-        float best_obj = 0.0f;
-
-        for (int k=this.waveSizeUB; k >= this.waveSizeLB; k--) {
-            
-            if (k <= best_obj) {
-                break;
-            }
-
-            // IloCplex cplex = new IloCplex();
-
-
-            // selected_orders.add();
+        ChallengeSolution solution = problem1a(5);
+        if (solution == null) {
 
         }
-
-        // seleccionar todo:
-        // for (int i=0; i < aisles.size(); i++) {
-        //     selected_aisles.add(i);            
-        // }
-        // for (int i=0; i < orders.size(); i++) {
-        //     selected_orders.add(i);
-        // }
-
-        ChallengeSolution solution = new ChallengeSolution(Set.of(selected_orders.toArray(new Integer[0])), Set.of(selected_aisles.toArray(new Integer[0])));
 
         return solution;
+    }
+
+
+    /**
+     * Problem 1.a: Solve the problem assuming number of selected aisles is constant and is the max number of aisles
+     * @return the solution to the problem
+     */
+    protected ChallengeSolution problem1a(int k) {
+        Loader.loadNativeLibraries();
+        MPSolver solver = MPSolver.createSolver("SCIP");
+        if (solver == null) {
+            System.out.println("Could not create solver SCIP");
+            return null;
+        }
+        int nOrders = orders.size();
+        ArrayList<MPVariable> selected_orders = new ArrayList<>(nOrders);
+        for (int i = 0; i < nOrders; i++) {
+            selected_orders.add(solver.makeBoolVar("order_" + i));
+        }
+
+        int nAisles = aisles.size();
+        ArrayList<MPVariable> selected_aisles = new ArrayList<>(nAisles);
+        for (int i = 0; i < nAisles; i++) {
+            selected_aisles.add(solver.makeBoolVar("aisle_" + i));
+        }
+
+        MPConstraint have_k_aisles = solver.makeConstraint(k, k, "Allow K aisles");
+        for (MPVariable x : selected_orders) {
+            have_k_aisles.setCoefficient(x, 0);
+        }
+        for (MPVariable y : selected_aisles) {
+            have_k_aisles.setCoefficient(y, 1);
+        }
+
+        MPConstraint wave_bounds = solver.makeConstraint(waveSizeLB, waveSizeUB, "Wave size bounds");
+        for (int o = 0; o < nOrders; o++) {
+            Map<Integer, Integer> order = orders.get(o);
+            int coeff = 0;
+            Collection<Integer> quantities = order.values();
+            for (Integer quantity: quantities) {
+                coeff += quantity;
+            }
+            MPVariable x = selected_orders.get(o);
+            wave_bounds.setCoefficient(x, coeff);
+        }
+        for (MPVariable y : selected_aisles) {
+            have_k_aisles.setCoefficient(y, 0);
+        }
+
+        double infinity = java.lang.Double.POSITIVE_INFINITY;
+        Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
+        for (Map<Integer, Integer> order : orders) {
+            item_keys.addAll(order.keySet());
+        }
+        for (Map<Integer, Integer> aisle : aisles) {
+            item_keys.addAll(aisle.keySet());
+        }
+
+        for (Integer i : item_keys) {
+            MPConstraint available_capacity = solver.makeConstraint(-infinity, 0, "Make sure items in orders are available in aisles");
+            for (int o = 0; o < nOrders; o++) {
+                MPVariable x = selected_orders.get(o);
+                Integer coeff = orders.get(o).get(i);
+                if (coeff == null) coeff = 0;
+                available_capacity.setCoefficient(x, coeff);
+            }
+            for (int a = 0; a < nAisles; a++) {
+                MPVariable y = selected_aisles.get(a);
+                Integer coeff = aisles.get(a).get(i);
+                if (coeff == null) coeff = 0;
+                available_capacity.setCoefficient(y, -coeff);
+            }
+        }
+
+        MPObjective objective = solver.objective();
+        for (int o = 0; o < nOrders; o++) {
+            Map<Integer, Integer> order = orders.get(o);
+            int coeff = 0;
+            Collection<Integer> quantities = order.values();
+            for (Integer quantity: quantities) {
+                coeff += quantity;
+            }
+            MPVariable x = selected_orders.get(o);
+            objective.setCoefficient(x, (double) coeff / k);
+        }
+        for (MPVariable y : selected_aisles) {
+            objective.setCoefficient(y, 0);
+        }
+        objective.setMaximization();
+        final MPSolver.ResultStatus resultStatus = solver.solve();
+
+        if (resultStatus == MPSolver.ResultStatus.OPTIMAL) {
+            System.out.println("Solution:");
+            System.out.println("Objective value = " + objective.value());
+            for (MPVariable x : selected_orders) {
+                System.out.println(x.name() + ": " + x.solutionValue());
+            }
+            for (MPVariable y : selected_aisles) {
+                System.out.println(y.name() + ": " + y.solutionValue());
+            }
+        } else {
+            return null;
+        }
+        return null;
     }
 
     /*
