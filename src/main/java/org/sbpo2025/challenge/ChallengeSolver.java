@@ -30,21 +30,24 @@ public class ChallengeSolver {
 
     public ChallengeSolution solve(StopWatch stopWatch) {
         // Implement your solution here
-        ChallengeSolution best_solution;
-        for (int k = 0; k < aisles.size(); k++) {
+        PartialResult bestSolution = new PartialResult(null, 0);
+        for (int k = 1; k < aisles.size(); k++) {
             System.out.println("Minimizing for k: " + k);
-            ChallengeSolution solution = problem1a(k);
+            PartialResult partialResult = problem1a(k);
+            if (partialResult.objValue() > bestSolution.objValue()) {
+                bestSolution = partialResult;
+            }
         }
         System.out.println("Done iterating over k.");
-        return null;
+        return bestSolution.partialSolution();
     }
 
 
     /**
-     * Problem 1.a: Solve the problem assuming number of selected aisles is constant and is the max number of aisles
+     * Problem 1.a: Solve the problem assuming number of selected aisles is constant
      * @return the solution to the problem
      */
-    protected ChallengeSolution problem1a(int k) {
+    protected PartialResult problem1a(int k) {
         Loader.loadNativeLibraries();
         MPSolver solver = MPSolver.createSolver("SCIP");
         if (solver == null) {
@@ -86,7 +89,7 @@ public class ChallengeSolver {
             wave_bounds.setCoefficient(y, 0);
         }
 
-        double infinity = java.lang.Double.POSITIVE_INFINITY;
+        double infinity = Double.POSITIVE_INFINITY;
         Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
         for (Map<Integer, Integer> order : orders) {
             item_keys.addAll(order.keySet());
@@ -128,20 +131,36 @@ public class ChallengeSolver {
         objective.setMaximization();
         final MPSolver.ResultStatus resultStatus = solver.solve();
 
+        Set<Integer> finalOrders = new HashSet<>();
+        Set<Integer> finalAisles = new HashSet<>();
         if (resultStatus == MPSolver.ResultStatus.OPTIMAL) {
             System.out.println("Solution:");
             System.out.println("Objective value = " + objective.value());
-            for (MPVariable x : selected_orders) {
-                System.out.println(x.name() + ": " + x.solutionValue());
+
+            for (int i = 0; i < selected_orders.size(); i++) {
+                MPVariable x = selected_orders.get(i);
+                if (x.solutionValue() == 1) {
+                    System.out.println("x_" + i + ": " + x.solutionValue());
+                    finalOrders.add(i);
+                }
             }
-            for (MPVariable y : selected_aisles) {
-                System.out.println(y.name() + ": " + y.solutionValue());
+
+            for (int i = 0; i < selected_aisles.size(); i++) {
+                MPVariable y = selected_aisles.get(i);
+                if (y.solutionValue() == 1) {
+                    System.out.println("y_" + i + ": " + y.solutionValue());
+                    finalAisles.add(i);
+                }
             }
+
+            ChallengeSolution partialSolution = new ChallengeSolution(finalOrders, finalAisles);
+            return new PartialResult(partialSolution, objective.value());
         } else {
             return null;
         }
-        return null;
     }
+
+
 
     /*
      * Get the remaining time in seconds
