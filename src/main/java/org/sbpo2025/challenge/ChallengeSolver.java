@@ -30,12 +30,13 @@ public class ChallengeSolver {
 
     public ChallengeSolution solve(StopWatch stopWatch) {
         // Implement your solution here
-        ChallengeSolution solution = problem1a(5);
-        if (solution == null) {
-
+        ChallengeSolution best_solution;
+        for (int k = 0; k < aisles.size(); k++) {
+            System.out.println("Minimizing for k: " + k);
+            ChallengeSolution solution = problem1a(k);
         }
-
-        return solution;
+        System.out.println("Done iterating over k.");
+        return null;
     }
 
 
@@ -82,7 +83,7 @@ public class ChallengeSolver {
             wave_bounds.setCoefficient(x, coeff);
         }
         for (MPVariable y : selected_aisles) {
-            have_k_aisles.setCoefficient(y, 0);
+            wave_bounds.setCoefficient(y, 0);
         }
 
         double infinity = java.lang.Double.POSITIVE_INFINITY;
