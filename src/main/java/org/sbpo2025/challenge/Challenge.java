@@ -113,8 +113,15 @@ public class Challenge {
         StopWatch stopWatch = StopWatch.createStarted();
 
         if (args.length != 2) {
-            System.out.println("Usage: java -jar target/ChallengeSBPO2025-1.0.jar <inputFilePath> <outputFilePath>");
-            return;
+            // System.out.println("Usage: java -jar target/ChallengeSBPO2025-1.0.jar <inputFilePath> <outputFilePath>");
+            // return;
+
+            String defaultInstance = "a/instance_0019.txt"; // Default instance number
+
+            args = new String[]{
+                    "datasets/"+defaultInstance,
+                    "output/"+defaultInstance
+            };
         }
 
         Challenge challenge = new Challenge();
