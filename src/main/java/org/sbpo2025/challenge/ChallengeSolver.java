@@ -88,7 +88,7 @@ public class ChallengeSolver {
         }
 
         // General problem constraints
-        makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles);
+        makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, waveSizeLB, waveSizeUB);
         makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
 
         // Objective
@@ -111,6 +111,47 @@ public class ChallengeSolver {
         return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
     }
 
+
+    /**
+     * Problem 1.b: Solve the problem assuming number of picked units is constant
+     * @return the solution to the problem
+     */
+    protected PartialResult problem1b(int k) {
+        // Solver
+        Loader.loadNativeLibraries();
+        MPSolver solver = MPSolver.createSolver("SCIP");
+        if (solver == null) {
+            System.out.println("Could not create solver SCIP");
+            return null;
+        }
+
+        // Variables
+        int nOrders = orders.size();
+        List<MPVariable> selected_orders = getVariablesOrders(solver, nOrders);
+        int nAisles = aisles.size();
+        List<MPVariable> selected_aisles = getVariablesAisles(solver, nAisles);
+
+        // Unique sub problem constraint
+        makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, k, k);
+        
+        // General problem constraints
+        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
+
+        // Objective
+        MPObjective objective = solver.objective();
+        for (MPVariable x : selected_orders) {
+            objective.setCoefficient(x, 0);
+        }
+        for (MPVariable y : selected_aisles) {
+            objective.setCoefficient(y, 1);
+        }
+        
+        objective.setMinimization();
+
+        return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+    }
+
+
     protected List<MPVariable> getVariablesOrders(MPSolver solver, int nOrders) {
         ArrayList<MPVariable> selected_orders = new ArrayList<>(nOrders);
         for (int i = 0; i < nOrders; i++) {
@@ -127,8 +168,8 @@ public class ChallengeSolver {
         return selected_aisles;
     }
 
-    protected void makeWaveBoundsConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, List<MPVariable> selected_aisles) {
-        MPConstraint wave_bounds = solver.makeConstraint(waveSizeLB, waveSizeUB, "Wave size bounds");
+    protected void makeWaveBoundsConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, List<MPVariable> selected_aisles, int LB, int UB) {
+        MPConstraint wave_bounds = solver.makeConstraint(LB, UB, "Wave size bounds");
         for (int o = 0; o < nOrders; o++) {
             Map<Integer, Integer> order = orders.get(o);
             int coeff = 0;
