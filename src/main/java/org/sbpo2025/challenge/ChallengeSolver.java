@@ -31,14 +31,30 @@ public class ChallengeSolver {
     public ChallengeSolution solve(StopWatch stopWatch) {
         // Implement your solution here
         PartialResult bestSolution = new PartialResult(null, 0);
-        for (int k = 1; k < aisles.size(); k++) {
-            System.out.println("Minimizing for k: " + k);
+        
+        System.out.println("Orders number: " + orders.size());
+        System.out.println("Aisles number: " + aisles.size());
+
+        for (int k = 1; k <= aisles.size(); k++) {
+            if (getRemainingTime(stopWatch) == 0) {
+                System.out.println("Max runtime reached, stopping iteration over k.");
+                break;
+            }
+            System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
+
+            if (waveSizeUB/k <= bestSolution.objValue()) {
+                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
+                break;
+            }
+
+            System.out.println("\nMaximizing picked items for number of aisles k = " + k);
             PartialResult partialResult = problem1a(k);
             if (partialResult.objValue() > bestSolution.objValue()) {
                 bestSolution = partialResult;
             }
         }
         System.out.println("Done iterating over k.");
+        System.out.println("Best solution found with value " + bestSolution.objValue());
         return bestSolution.partialSolution();
     }
 
@@ -161,13 +177,11 @@ public class ChallengeSolver {
         Set<Integer> finalOrders = new HashSet<>();
         Set<Integer> finalAisles = new HashSet<>();
         if (resultStatus == MPSolver.ResultStatus.OPTIMAL) {
-            System.out.println("Solution:");
-            System.out.println("Objective value = " + objective.value());
 
             for (int i = 0; i < nOrders; i++) {
                 MPVariable x = selected_orders.get(i);
                 if (x.solutionValue() == 1) {
-                    System.out.println("x_" + i + ": " + x.solutionValue());
+                    // System.out.println("x_" + i + ": " + x.solutionValue());
                     finalOrders.add(i);
                 }
             }
@@ -175,15 +189,21 @@ public class ChallengeSolver {
             for (int i = 0; i < nAisles; i++) {
                 MPVariable y = selected_aisles.get(i);
                 if (y.solutionValue() == 1) {
-                    System.out.println("y_" + i + ": " + y.solutionValue());
+                    // System.out.println("y_" + i + ": " + y.solutionValue());
                     finalAisles.add(i);
                 }
             }
 
             ChallengeSolution partialSolution = new ChallengeSolution(finalOrders, finalAisles);
+
+            System.out.println("Solution:");
+            System.out.println("Selected orders = " + finalOrders);
+            System.out.println("Selected aisles = " + finalAisles);
+            System.out.println("Objective value = " + objective.value());
+            
             return new PartialResult(partialSolution, objective.value());
         } else {
-            return null;
+            return new PartialResult(null, 0);
         }
     }
 
