@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class ChallengeSolver {
-    private final long MAX_RUNTIME = 600000; // milliseconds; 10 minutes
+    private final long MAX_RUNTIME = 599000; // milliseconds; 10 minutes
 
     protected List<Map<Integer, Integer>> orders;
     protected List<Map<Integer, Integer>> aisles;
@@ -34,27 +34,58 @@ public class ChallengeSolver {
         
         System.out.println("Orders number: " + orders.size());
         System.out.println("Aisles number: " + aisles.size());
+        System.out.println("Items number: " + nItems);
+        System.out.println("Wave size bounds: [" + waveSizeLB + ", " + waveSizeUB + "]");
+
+        // int k = 1;
+        // while (bestSolution.partialSolution() == null) {
 
         for (int k = 1; k <= aisles.size(); k++) {
-            if (getRemainingTime(stopWatch) == 0) {
+        // for (int k = waveSizeUB; k >= waveSizeLB; k--) {
+
+            long remainingTime = getRemainingTime(stopWatch);
+
+            if (remainingTime == 0) {
                 System.out.println("Max runtime reached, stopping iteration over k.");
                 break;
             }
-            System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
+            System.out.println("Remaining time: " + remainingTime + " seconds");
 
             if (waveSizeUB/k <= bestSolution.objValue()) {
+            // if (k <= bestSolution.objValue()) {
+
                 System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
                 break;
             }
 
             System.out.println("\nMaximizing picked items for number of aisles k = " + k);
-            PartialResult partialResult = problem1a(k);
+            PartialResult partialResult = problem1a(k, remainingTime);
+            // System.out.println("\nMinimizing visited aisles for number of units k = " + k);
+            // PartialResult partialResult = problem1b(k, remainingTime);
+
+            if (partialResult.partialSolution() == null) {
+                System.out.println("No feasible solution found for k = " + k);
+                continue;
+            }
+
+            System.out.println("Partial Solution:");
+            System.out.println("Selected orders = " + partialResult.partialSolution().orders());
+            System.out.println("Selected aisles = " + partialResult.partialSolution().aisles());
+            System.out.println("Objective value = " + partialResult.objValue());
+            
             if (partialResult.objValue() > bestSolution.objValue()) {
                 bestSolution = partialResult;
             }
+
+            // k++;
+            // if (k > aisles.size()) {
+            //     break;
+            // }
         }
+
         System.out.println("Done iterating over k.");
         System.out.println("Best solution found with value " + bestSolution.objValue());
+        System.out.println("Final remaining time: " + getRemainingTime(stopWatch) + " seconds");
         return bestSolution.partialSolution();
     }
 
@@ -63,13 +94,14 @@ public class ChallengeSolver {
      * Problem 1.a: Solve the problem assuming number of selected aisles is constant
      * @return the solution to the problem
      */
-    protected PartialResult problem1a(int k) {
+    protected PartialResult problem1a(int k, long remainingTime) {
         // Solver
         Loader.loadNativeLibraries();
         MPSolver solver = MPSolver.createSolver("SCIP");
         if (solver == null) {
             System.out.println("Could not create solver SCIP");
-            return null;
+            return new PartialResult(null, 0);
+            // return null;
         }
 
         // Variables
@@ -101,14 +133,18 @@ public class ChallengeSolver {
                 coeff += quantity;
             }
             MPVariable x = selected_orders.get(o);
-            objective.setCoefficient(x, (double) coeff / k);
+            // objective.setCoefficient(x, (double) coeff / k);
+            objective.setCoefficient(x, coeff);
         }
         for (MPVariable y : selected_aisles) {
             objective.setCoefficient(y, 0);
         }
         objective.setMaximization();
 
-        return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        solver.setTimeLimit(remainingTime * 1000); // Convert seconds to milliseconds
+
+        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / k); // Normalize the objective value by k
     }
 
 
@@ -116,13 +152,14 @@ public class ChallengeSolver {
      * Problem 1.b: Solve the problem assuming number of picked units is constant
      * @return the solution to the problem
      */
-    protected PartialResult problem1b(int k) {
+    protected PartialResult problem1b(int k, long remainingTime) {
         // Solver
         Loader.loadNativeLibraries();
         MPSolver solver = MPSolver.createSolver("SCIP");
         if (solver == null) {
             System.out.println("Could not create solver SCIP");
-            return null;
+            return new PartialResult(null, 0);
+            // return null;
         }
 
         // Variables
@@ -148,7 +185,10 @@ public class ChallengeSolver {
         
         objective.setMinimization();
 
-        return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        solver.setTimeLimit(remainingTime * 1000); // Convert seconds to milliseconds
+
+        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        return new PartialResult(partialResult.partialSolution(), k / partialResult.objValue()); // Normalize the objective value by k
     }
 
 
@@ -213,6 +253,7 @@ public class ChallengeSolver {
     }
 
     protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
+        
         final MPSolver.ResultStatus resultStatus = solver.solve();
 
         Set<Integer> finalOrders = new HashSet<>();
@@ -236,11 +277,6 @@ public class ChallengeSolver {
             }
 
             ChallengeSolution partialSolution = new ChallengeSolution(finalOrders, finalAisles);
-
-            System.out.println("Solution:");
-            System.out.println("Selected orders = " + finalOrders);
-            System.out.println("Selected aisles = " + finalAisles);
-            System.out.println("Objective value = " + objective.value());
             
             return new PartialResult(partialSolution, objective.value());
         } else {
