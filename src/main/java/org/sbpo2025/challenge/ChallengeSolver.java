@@ -40,17 +40,17 @@ public class ChallengeSolver {
         System.out.println("Items number: " + nItems);
         System.out.println("Wave size bounds: [" + waveSizeLB + ", " + waveSizeUB + "]");
 
-        // Metodo 1 ---
-        // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
-        bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch);
-        if (bestSolution.partialSolution() == null) {
-            System.out.println("No feasible solution found, stopping.");
-            return null; // No feasible solution found (for the whole problem)
-        }
-        int minimumAisles = bestSolution.partialSolution().aisles().size();
-        bestSolution = solveWithFixedAisles(bestSolution, stopWatch, minimumAisles);
-        // start iterating with minimumAisles
-        // -------------------------------------------------------------------------------
+        // // Metodo 1 ---
+        // // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
+        // bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch);
+        // if (bestSolution.partialSolution() == null) {
+        //     System.out.println("No feasible solution found, stopping.");
+        //     return null; // No feasible solution found (for the whole problem)
+        // }
+        // int minimumAisles = bestSolution.partialSolution().aisles().size();
+        // bestSolution = solveWithFixedAisles(bestSolution, stopWatch, minimumAisles);
+        // // start iterating with minimumAisles
+        // // -------------------------------------------------------------------------------
 
         // // Metodo 2 ---
         // // iterar sobre la cantidad de pasillos (desde 1 hasta el total) ------------
@@ -62,6 +62,19 @@ public class ChallengeSolver {
         // // iterar sobre la cantidad de items (desde LB hasta UB) -> poco eficiente------------
         // bestSolution = solveWithFixedItems(bestSolution, stopWatch);
         // // -------------------------------------------------------------------------------
+
+        // Metodo 4 ---
+        // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
+        // bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch);
+        // if (bestSolution.partialSolution() == null) {
+        //     System.out.println("No feasible solution found, stopping.");
+        //     return null; // No feasible solution found (for the whole problem)
+        // }
+        // int minimumAisles = bestSolution.partialSolution().aisles().size();
+        bestSolution = solveWithSelectedAisles(bestSolution, stopWatch);
+        // start iterating with minimumAisles
+        // -------------------------------------------------------------------------------
+
         
         // retrieve the final best solution
         System.out.println("\nBest solution found with value " + bestSolution.objValue());
@@ -193,6 +206,75 @@ public class ChallengeSolver {
     }
 
 
+    protected PartialResult solveWithSelectedAisles(PartialResult bestSolution, StopWatch stopWatch, int initialAislesNumber) {
+        System.out.println("\n>> solveWithSelectedAisles");
+
+        Set<Integer> selectedAisles = new HashSet<>();
+        Set<Integer> remainingAisles = new HashSet<>(aisles.size());
+        for (int i = 0; i < aisles.size(); i++) {
+            remainingAisles.add(i);
+        }
+
+        // iterate over the number of aisles
+        for (int k = 1; k <= aisles.size(); k++) {
+
+            int aisle = maxCapacityAisle(remainingAisles);
+            if (aisle == -1) {
+                System.out.println("No aisles found in the list.");
+                return bestSolution;
+            }
+            remainingAisles.remove(aisle);
+            selectedAisles.add(aisle);
+
+            if (k < initialAislesNumber) {
+                continue; // skip iterations until we reach the initial aisles number
+            }
+
+            if (getRemainingTime(stopWatch) == 0) {
+                System.out.println("Max runtime reached, stopping iteration over k.");
+                break;
+            } // stop iteration if no time left
+            System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
+
+            if (waveSizeUB/k <= bestSolution.objValue()) {
+                // stopping condition due to optimality
+                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
+                break;
+            }
+
+            // solve
+            System.out.println("Maximizing picked items for number of aisles k = " + k);
+            System.out.println("Selected aisles: " + Arrays.toString(selectedAisles.toArray()));
+            PartialResult partialResult = problem2a(selectedAisles, getRemainingTime(stopWatch));
+    
+            if (partialResult.partialSolution() == null) {
+                System.out.println("No feasible solution found for k = " + k);
+                continue;
+            } // no feasible
+
+            // show optimal for k aisles
+            System.out.println("Partial Solution:");
+            System.out.println("Selected orders = " + partialResult.partialSolution().orders());
+            System.out.println("Selected aisles = " + partialResult.partialSolution().aisles());
+            System.out.println("Objective value = " + partialResult.objValue());
+            
+            // update best solution
+            if (partialResult.objValue() > bestSolution.objValue()) {
+                bestSolution = partialResult;
+            }
+
+        }
+
+        System.out.println("Done iterating over k (fixed aisles)");
+        System.out.println("Best solution found with value " + bestSolution.objValue());
+
+        return bestSolution;
+    }
+    protected PartialResult solveWithSelectedAisles(PartialResult bestSolution, StopWatch stopWatch) {
+        return solveWithSelectedAisles(bestSolution, stopWatch, 1);
+        // default value for initialAislesNumber is 1
+    }
+
 
 
     /**
@@ -253,7 +335,6 @@ public class ChallengeSolver {
         PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
         return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / k); // Normalize the objective value by k
     }
-
 
     /**
      * Problem 1.b: Solve the problem assuming number of picked units is constant
@@ -323,7 +404,7 @@ public class ChallengeSolver {
         List<MPVariable> selected_aisles = getVariablesAisles(solver, nAisles);
 
         // Unique sub problem constraint
-        makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, waveSizeLB, Integer.MAX_VALUE);
+        makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, waveSizeLB, waveSizeUB);
 
         // General problem constraints
         makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
@@ -351,6 +432,59 @@ public class ChallengeSolver {
         System.out.println("Minimum aisles number for feasibility: " + partialResult.objValue());
         return new PartialResult(partialResult.partialSolution(), waveSize / partialResult.objValue()); // Normalize the objective value by waveSize
     }
+
+        /**
+     * Problem 1.a: Solve the problem assuming a subset of k selected aisles
+     * @return the solution to the problem (optimal for the given subset of aisles)
+     */
+    protected PartialResult problem2a(Set<Integer> selectedAisles, long remainingTime) {
+        // Solver
+        Loader.loadNativeLibraries();
+        MPSolver solver = MPSolver.createSolver("SCIP");
+        if (solver == null) {
+            System.out.println("Could not create solver SCIP");
+            return new PartialResult(null, 0);
+            // return null;
+        }
+
+        // Variables
+        int nOrders = orders.size();
+        List<MPVariable> selected_orders = getVariablesOrders(solver, nOrders);
+       
+        int nAisles = aisles.size();
+
+        // General problem constraints, but with fixed aisles
+        makeWaveBoundsConstraint(solver, nOrders, selected_orders, Collections.emptyList(), waveSizeLB, waveSizeUB);
+        
+        // available capacity constraint, considering fixed aisles (only order variables)
+        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, new ArrayList<>(), selectedAisles);
+
+
+        // Objective
+        MPObjective objective = solver.objective();
+        for (int o = 0; o < nOrders; o++) {
+            Map<Integer, Integer> order = orders.get(o);
+            int coeff = 0;
+            Collection<Integer> quantities = order.values();
+            for (Integer quantity: quantities) {
+                coeff += quantity;
+            }
+            MPVariable x = selected_orders.get(o);
+            
+            objective.setCoefficient(x, coeff);
+        }
+        objective.setMaximization();
+
+        solver.setTimeLimit(remainingTime * 1000); // Convert seconds to milliseconds
+        if (enableOutput) {
+            solver.enableOutput();
+        }
+        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, Collections.emptyList(), selectedAisles);
+        return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / selectedAisles.size()); // Normalize the objective value by the number of selected aisles
+    }
+
+    
+
 
     // variables
 
@@ -389,18 +523,28 @@ public class ChallengeSolver {
         }
     }
 
-    protected void makeAvailableCapacityConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
+    protected void makeAvailableCapacityConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_aisles) {
         double infinity = Double.POSITIVE_INFINITY;
         Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
         for (Map<Integer, Integer> order : orders) {
             item_keys.addAll(order.keySet());
         }
-        for (Map<Integer, Integer> aisle : aisles) {
-            item_keys.addAll(aisle.keySet());
-        }
+        // for (Map<Integer, Integer> aisle : aisles) {
+        //     item_keys.addAll(aisle.keySet());
+        // }
 
         for (Integer i : item_keys) {
-            MPConstraint available_capacity = solver.makeConstraint(-infinity, 0, "Make sure items in orders are available in aisles");
+
+            // Sum up availability of item i from fixed aisles
+            int supply = 0;
+            for (int a : fixed_selected_aisles) {
+                Integer coeff = aisles.get(a).get(i);
+                if (coeff != null) supply += coeff;
+            }
+
+            MPConstraint available_capacity = solver.makeConstraint(-infinity, supply, "Make sure items in orders are available in aisles");
+
+            // Coefficients for orders
             for (int o = 0; o < nOrders; o++) {
                 MPVariable x = selected_orders.get(o);
                 Integer coeff = orders.get(o).get(i);
@@ -408,16 +552,46 @@ public class ChallengeSolver {
                 available_capacity.setCoefficient(x, coeff);
             }
             for (int a = 0; a < nAisles; a++) {
-                MPVariable y = selected_aisles.get(a);
-                Integer coeff = aisles.get(a).get(i);
-                if (coeff == null) coeff = 0;
-                available_capacity.setCoefficient(y, -coeff);
+                MPVariable y = selected_aisles.get(a); // try get the aisle from the variables
+                if (y != null) {
+                    Integer coeff = aisles.get(a).get(i);
+                    if (coeff == null) coeff = 0;
+                    available_capacity.setCoefficient(y, -coeff);
+                }
             }
         }
     }
+    protected void makeAvailableCapacityConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
+        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+        // double infinity = Double.POSITIVE_INFINITY;
+        // Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
+        // for (Map<Integer, Integer> order : orders) {
+        //     item_keys.addAll(order.keySet());
+        // }
+        // // for (Map<Integer, Integer> aisle : aisles) {
+        // //     item_keys.addAll(aisle.keySet());
+        // // }
+
+        // for (Integer i : item_keys) {
+        //     MPConstraint available_capacity = solver.makeConstraint(-infinity, 0, "Make sure items in orders are available in aisles");
+        //     for (int o = 0; o < nOrders; o++) {
+        //         MPVariable x = selected_orders.get(o);
+        //         Integer coeff = orders.get(o).get(i);
+        //         if (coeff == null) coeff = 0;
+        //         available_capacity.setCoefficient(x, coeff);
+        //     }
+        //     for (int a = 0; a < nAisles; a++) {
+        //         MPVariable y = selected_aisles.get(a);
+        //         Integer coeff = aisles.get(a).get(i);
+        //         if (coeff == null) coeff = 0;
+        //         available_capacity.setCoefficient(y, -coeff);
+        //     }
+        // }
+    }
+
 
     // solve
-    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
+    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_aisles) {
         
         final MPSolver.ResultStatus resultStatus = solver.solve();
 
@@ -436,7 +610,8 @@ public class ChallengeSolver {
 
             for (int i = 0; i < nAisles; i++) {
                 MPVariable y = selected_aisles.get(i);
-                if (y.solutionValue() == 1) {
+                if ((y == null && fixed_selected_aisles.contains(i)) ||
+                    (y != null && y.solutionValue() == 1)) {
                     // System.out.println("y_" + i + ": " + y.solutionValue());
                     finalAisles.add(i);
                 }
@@ -448,6 +623,10 @@ public class ChallengeSolver {
         } else {
             return new PartialResult(null, 0);
         }
+    }
+    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
+        return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+        // default value for fixed_selected_aisles is empty set
     }
 
     /*
@@ -467,13 +646,37 @@ public class ChallengeSolver {
             return 0;
         }
 
-        for (int order : partialSolution.orders()) {
+        for (int order : partialSolution.orders()) { // each order
             for (Map.Entry<Integer, Integer> entry : orders.get(order).entrySet()) {
-                unitsPicked += entry.getValue();
+                unitsPicked += entry.getValue(); // each item
             }
         }
 
         return unitsPicked;
+    }
+
+    public int maxCapacityAisle(Set<Integer> aislesList) {
+
+        int maxAisle = -1;
+        int max = 0;
+        int capacity = 0;
+
+        for (int aisle : aislesList) { // each aisle
+            capacity = 0;
+            for (Map.Entry<Integer, Integer> entry : aisles.get(aisle).entrySet()) {
+                capacity += entry.getValue(); // each item
+            }
+            if (capacity > max) { // update
+                max = capacity;
+                maxAisle = aisle;
+            }
+        }
+
+        if (maxAisle == -1) {
+            System.out.println("Max aisle not found.");
+        }
+
+        return maxAisle;
     }
 
     protected boolean isSolutionFeasible(ChallengeSolution challengeSolution) {
