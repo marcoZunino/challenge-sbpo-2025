@@ -18,7 +18,7 @@ public class ChallengeSolver {
     protected int nItems;
     protected int waveSizeLB;
     protected int waveSizeUB;
-    protected boolean enableOutput = true; // Enable or disable solver output
+    protected boolean enableOutput = false; // Enable or disable solver output
 
     public ChallengeSolver(
         List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles, int nItems, int waveSizeLB, int waveSizeUB) {
@@ -96,12 +96,12 @@ public class ChallengeSolver {
 
             if (waveSizeUB/k <= bestSolution.objValue()) {
                 // stopping condition due to optimality
-                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
+                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k >= " + k);
                 break;
             }
 
             // solve
-            System.out.println("Maximizing picked items for number of aisles k = " + k);
+            System.out.println("\nMaximizing picked items for number of aisles k = " + k);
             PartialResult partialResult = problem1a(k, getRemainingTime(stopWatch));
     
             if (partialResult.partialSolution() == null) {
@@ -146,12 +146,12 @@ public class ChallengeSolver {
 
             if (k <= bestSolution.objValue()) {
                 // stopping condition due to optimality
-                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
+                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k <= " + k);
                 break;
             }
 
             // solve
-            System.out.println("Minimizing visited aisles for number of units k = " + k);
+            System.out.println("\nMinimizing visited aisles for number of units k = " + k);
             PartialResult partialResult = problem1b(k, getRemainingTime(stopWatch));
 
             if (partialResult.partialSolution() == null) {
@@ -238,13 +238,13 @@ public class ChallengeSolver {
 
             if (waveSizeUB/k <= bestSolution.objValue()) {
                 // stopping condition due to optimality
-                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k = " + k);
+                System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k >= " + k);
                 break;
             }
 
             // solve
-            System.out.println("Maximizing picked items for number of aisles k = " + k);
-            System.out.println("Selected aisles: " + Arrays.toString(selectedAisles.toArray()));
+            System.out.println("\nMaximizing picked items for number of aisles k = " + k);
+            System.out.println("Picked aisles: " + Arrays.toString(selectedAisles.toArray()));
             PartialResult partialResult = problem2a(selectedAisles, getRemainingTime(stopWatch));
     
             if (partialResult.partialSolution() == null) {
@@ -551,6 +551,10 @@ public class ChallengeSolver {
                 if (coeff == null) coeff = 0;
                 available_capacity.setCoefficient(x, coeff);
             }
+
+            if (selected_aisles.isEmpty()) {
+                continue;
+            }
             for (int a = 0; a < nAisles; a++) {
                 MPVariable y = selected_aisles.get(a); // try get the aisle from the variables
                 if (y != null) {
@@ -607,11 +611,16 @@ public class ChallengeSolver {
                     finalOrders.add(i);
                 }
             }
-
-            for (int i = 0; i < nAisles; i++) {
+            for (Integer a : fixed_selected_aisles) {
+                finalAisles.add(a);
+            }
+            for (int i = 0; i < selected_aisles.size(); i++) {
                 MPVariable y = selected_aisles.get(i);
-                if ((y == null && fixed_selected_aisles.contains(i)) ||
-                    (y != null && y.solutionValue() == 1)) {
+                if (
+                    y.solutionValue() == 1
+                    // (y == null && fixed_selected_aisles.contains(i))
+                    // || (y != null && y.solutionValue() == 1)
+                    ) {
                     // System.out.println("y_" + i + ": " + y.solutionValue());
                     finalAisles.add(i);
                 }
@@ -675,7 +684,7 @@ public class ChallengeSolver {
         if (maxAisle == -1) {
             System.out.println("Max aisle not found.");
         }
-
+        System.out.println("Max aisle: " + maxAisle + " with capacity " + max);
         return maxAisle;
     }
 
