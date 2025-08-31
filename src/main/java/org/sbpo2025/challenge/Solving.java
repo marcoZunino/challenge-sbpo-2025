@@ -71,7 +71,7 @@ public class Solving {
 
         // General problem constraints
         makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, waveSizeLB, waveSizeUB);
-        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
+        makeAvailableCapacityConstraint(solver, selected_orders, selected_aisles);
 
         // Objective
         MPObjective objective = solver.objective();
@@ -95,7 +95,7 @@ public class Solving {
         if (enableOutput) {
             solver.enableOutput();
         }
-        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        PartialResult partialResult = calculatePartialResult(solver, objective, selected_orders, selected_aisles);
         return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / k); // Normalize the objective value by k
     }
 
@@ -116,7 +116,7 @@ public class Solving {
 
         // General problem constraints
         makeWaveBoundsConstraint(model, nOrders, selected_orders, selected_aisles, waveSizeLB, waveSizeUB);
-        makeAvailableCapacityConstraint(model, nOrders, selected_orders, nAisles, selected_aisles);
+        makeAvailableCapacityConstraint(model, selected_orders, selected_aisles);
 
         // Objective
         LinearExprBuilder objectiveBuilder = LinearExpr.newBuilder();
@@ -136,7 +136,7 @@ public class Solving {
         solver.getParameters().setMaxTimeInSeconds(remainingTime);      // Time limit in seconds
         solver.getParameters().setLogSearchProgress(enableOutput);      // Enable logging
         
-        PartialResult partialResult = calculatePartialResult(solver, model, nOrders, selected_orders, nAisles, selected_aisles);
+        PartialResult partialResult = calculatePartialResult(solver, model, selected_orders, selected_aisles);
         return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / k); // Normalize the objective value by k
     }
 
@@ -164,7 +164,7 @@ public class Solving {
         makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, k, k);
 
         // General problem constraints
-        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
+        makeAvailableCapacityConstraint(solver, selected_orders, selected_aisles);
 
         // Objective
         MPObjective objective = solver.objective();
@@ -182,13 +182,13 @@ public class Solving {
             solver.enableOutput();
         }
 
-        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        PartialResult partialResult = calculatePartialResult(solver, objective, selected_orders, selected_aisles);
         System.out.println("Minimum aisles number for feasibility: " + partialResult.objValue());
         return new PartialResult(partialResult.partialSolution(), k / partialResult.objValue()); // Normalize the objective value by k
     }
 
     /**
-     * Problem 1.c: Minimize the number of aisles in order to get a feasible solution
+     * Problem 1.c: Minimize the number of aisles to get a feasible solution
      * @return the solution to the problem (not necessarily optimal for the original problem)
      */
     protected PartialResult problem1c(long remainingTime) {
@@ -211,7 +211,7 @@ public class Solving {
         makeWaveBoundsConstraint(solver, nOrders, selected_orders, selected_aisles, waveSizeLB, waveSizeUB);
 
         // General problem constraints
-        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles);
+        makeAvailableCapacityConstraint(solver, selected_orders, selected_aisles);
 
         // Objective
         MPObjective objective = solver.objective();
@@ -229,7 +229,7 @@ public class Solving {
             solver.enableOutput();
         }
 
-        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles);
+        PartialResult partialResult = calculatePartialResult(solver, objective, selected_orders, selected_aisles);
 
         int waveSize = waveSize(partialResult.partialSolution());
 
@@ -254,14 +254,12 @@ public class Solving {
         // Variables
         int nOrders = orders.size();
         List<MPVariable> selected_orders = getVariablesOrders(solver, nOrders);
-       
-        int nAisles = aisles.size();
 
         // General problem constraints, but with fixed aisles
         makeWaveBoundsConstraint(solver, nOrders, selected_orders, Collections.emptyList(), waveSizeLB, waveSizeUB);
         
         // available capacity constraint, considering fixed aisles (only order variables)
-        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, new ArrayList<>(), selectedAisles);
+        makeAvailableCapacityConstraint(solver, selected_orders, Collections.emptyList(), Collections.emptySet(), selectedAisles);
 
 
         // Objective
@@ -283,10 +281,63 @@ public class Solving {
         if (enableOutput) {
             solver.enableOutput();
         }
-        PartialResult partialResult = calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, Collections.emptyList(), selectedAisles);
+        PartialResult partialResult = calculatePartialResult(solver, objective, selected_orders, Collections.emptyList(), Collections.emptySet(), selectedAisles);
         return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / selectedAisles.size()); // Normalize the objective value by the number of selected aisles
     }
 
+    /**
+     * Problem 2.b: Solve the problem assuming a subset of selected orders
+     * @return the solution to the problem (optimal for the given subset of orders)
+     */
+    protected PartialResult problem2b(Set<Integer> selectedOrders, long remainingTime) {
+        // Solver
+        Loader.loadNativeLibraries();
+        MPSolver solver = MPSolver.createSolver("SCIP");
+        if (solver == null) {
+            System.out.println("Could not create solver SCIP");
+            return new PartialResult(null, 0);
+            // return null;
+        }
+
+        // Constants
+        int nAisles = aisles.size();
+
+        int waveSize = 0;
+        for (Integer order : selectedOrders) {
+            for (Map.Entry<Integer, Integer> entry : orders.get(order).entrySet()) {
+                waveSize += entry.getValue();
+            }
+        }
+
+        if (waveSize > waveSizeUB || waveSize < waveSizeLB) {
+            System.out.println("Wave size out of bounds");
+            return new PartialResult(null, 0);
+        }
+
+        // Variables
+        List<MPVariable> selected_aisles = getVariablesAisles(solver, nAisles);
+        
+        // available capacity constraint, considering fixed aisles (only order variables)
+        makeAvailableCapacityConstraint(solver, Collections.emptyList(), selected_aisles, selectedOrders, Collections.emptySet());
+
+        // Objective
+        MPObjective objective = solver.objective();
+        for (MPVariable y : selected_aisles) {
+            objective.setCoefficient(y, 1);
+        }
+        objective.setMinimization();
+
+        solver.setTimeLimit(remainingTime * 1000); // Convert seconds to milliseconds
+        if (enableOutput) {
+            solver.enableOutput();
+        }
+
+        PartialResult partialResult = calculatePartialResult(solver, objective, Collections.emptyList(), selected_aisles, selectedOrders, Collections.emptySet());
+
+        return new PartialResult(partialResult.partialSolution(), waveSize / partialResult.objValue()); // Original problem objective value
+    }
+
+    
     
 
 
@@ -346,7 +397,7 @@ public class Solving {
         model.addGreaterOrEqual(wave_bounds, LB);
     }
 
-    protected void makeAvailableCapacityConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_aisles) {
+    protected void makeAvailableCapacityConstraint(MPSolver solver, List<MPVariable> selected_orders, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_orders, Set<Integer> fixed_selected_aisles) {
         double infinity = Double.POSITIVE_INFINITY;
         Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
         for (Map<Integer, Integer> order : orders) {
@@ -365,33 +416,44 @@ public class Solving {
                 if (coeff != null) supply += coeff;
             }
 
-            MPConstraint available_capacity = solver.makeConstraint(-infinity, supply, "Make sure items in orders are available in aisles");
+            // Sum up demand of item i from fixed orders
+            int demand = 0;
+            for (int o : fixed_selected_orders) {
+                Integer coeff = orders.get(o).get(i);
+                if (coeff != null) demand += coeff;
+            }
+
+            MPConstraint available_capacity = solver.makeConstraint(-infinity, supply - demand, "Make sure items in orders are available in aisles");
 
             // Coefficients for orders
-            for (int o = 0; o < nOrders; o++) {
-                MPVariable x = selected_orders.get(o);
-                Integer coeff = orders.get(o).get(i);
-                if (coeff == null) coeff = 0;
-                available_capacity.setCoefficient(x, coeff);
+            if (!selected_orders.isEmpty()) {
+                for (int o = 0; o < selected_orders.size(); o++) {
+                    MPVariable x = selected_orders.get(o); // try get the order from the variables
+                    if (x != null) {
+                        Integer coeff = orders.get(o).get(i);
+                        if (coeff == null) coeff = 0;
+                        available_capacity.setCoefficient(x, coeff);
+                    }
+                }
             }
 
-            if (selected_aisles.isEmpty()) {
-                continue;
-            }
-            for (int a = 0; a < nAisles; a++) {
-                MPVariable y = selected_aisles.get(a); // try get the aisle from the variables
-                if (y != null) {
-                    Integer coeff = aisles.get(a).get(i);
-                    if (coeff == null) coeff = 0;
-                    available_capacity.setCoefficient(y, -coeff);
+            // Coefficients for aisles
+            if (!selected_aisles.isEmpty()) {
+                for (int a = 0; a < selected_aisles.size(); a++) {
+                    MPVariable y = selected_aisles.get(a); // try get the aisle from the variables
+                    if (y != null) {
+                        Integer coeff = aisles.get(a).get(i);
+                        if (coeff == null) coeff = 0;
+                        available_capacity.setCoefficient(y, -coeff);
+                    }
                 }
             }
         }
     }
-    protected void makeAvailableCapacityConstraint(MPSolver solver, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
-        makeAvailableCapacityConstraint(solver, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+    protected void makeAvailableCapacityConstraint(MPSolver solver, List<MPVariable> selected_orders, List<MPVariable> selected_aisles) {
+        makeAvailableCapacityConstraint(solver, selected_orders, selected_aisles, Collections.emptySet(), Collections.emptySet());
     }
-    protected void makeAvailableCapacityConstraint(CpModel model, int nOrders, List<BoolVar> selected_orders, int nAisles, List<BoolVar> selected_aisles, Set<Integer> fixed_selected_aisles) {
+    protected void makeAvailableCapacityConstraint(CpModel model, List<BoolVar> selected_orders, List<BoolVar> selected_aisles, Set<Integer> fixed_selected_orders, Set<Integer> fixed_selected_aisles) {
         Set<Integer> item_keys = new HashSet<>(Collections.emptySet());
         for (Map<Integer, Integer> order : orders) {
             item_keys.addAll(order.keySet());
@@ -407,7 +469,7 @@ public class Solving {
 
             // Build LinearExpr for total demand from orders
             List<LinearExpr> demandTerms = new ArrayList<>();
-            for (int o = 0; o < nOrders; o++) {
+            for (int o = 0; o < orders.size(); o++) {
                 Integer coeff = orders.get(o).get(i);
                 if (coeff != null && coeff != 0) {
                     demandTerms.add(LinearExpr.term(selected_orders.get(o), coeff));
@@ -416,7 +478,7 @@ public class Solving {
 
             // Build LinearExpr for variable aisle supply
             List<LinearExpr> aisleTerms = new ArrayList<>();
-            for (int a = 0; a < nAisles; a++) {
+            for (int a = 0; a < aisles.size(); a++) {
                 Integer coeff = aisles.get(a).get(i);
                 if (coeff != null && coeff != 0) {
                     aisleTerms.add(LinearExpr.term(selected_aisles.get(a), coeff));
@@ -434,28 +496,35 @@ public class Solving {
         }
 
     }
-    protected void makeAvailableCapacityConstraint(CpModel model, int nOrders, List<BoolVar> selected_orders, int nAisles, List<BoolVar> selected_aisles) {
-        makeAvailableCapacityConstraint(model, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+    protected void makeAvailableCapacityConstraint(CpModel model, List<BoolVar> selected_orders, List<BoolVar> selected_aisles) {
+        makeAvailableCapacityConstraint(model, selected_orders, selected_aisles, Collections.emptySet(), Collections.emptySet());
     }
 
 
     // solve
-    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_aisles) {
+    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, List<MPVariable> selected_orders, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_orders, Set<Integer> fixed_selected_aisles) {
         
         final MPSolver.ResultStatus resultStatus = solver.solve();
 
         Set<Integer> finalOrders = new HashSet<>();
         Set<Integer> finalAisles = new HashSet<>();
+
         if (resultStatus == MPSolver.ResultStatus.OPTIMAL) {
             // revisar condicion .OPTIMAL
 
-            for (int i = 0; i < nOrders; i++) {
+            // pick orders
+            for (Integer a : fixed_selected_orders) {
+                finalOrders.add(a);
+            }
+            for (int i = 0; i < selected_orders.size(); i++) {
                 MPVariable x = selected_orders.get(i);
                 if (x.solutionValue() == 1) {
                     // System.out.println("x_" + i + ": " + x.solutionValue());
                     finalOrders.add(i);
                 }
             }
+
+            // pick aisles
             for (Integer a : fixed_selected_aisles) {
                 finalAisles.add(a);
             }
@@ -470,6 +539,7 @@ public class Solving {
                     finalAisles.add(i);
                 }
             }
+            
 
             ChallengeSolution partialSolution = new ChallengeSolution(finalOrders, finalAisles);
             
@@ -478,11 +548,11 @@ public class Solving {
             return new PartialResult(null, 0);
         }
     }
-    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, int nOrders, List<MPVariable> selected_orders, int nAisles, List<MPVariable> selected_aisles) {
-        return calculatePartialResult(solver, objective, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+    protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, List<MPVariable> selected_orders, List<MPVariable> selected_aisles) {
+        return calculatePartialResult(solver, objective, selected_orders, selected_aisles, Collections.emptySet(), Collections.emptySet());
         // default value for fixed_selected_aisles is empty set
     }
-    protected PartialResult calculatePartialResult(CpSolver solver, CpModel model, int nOrders, List<BoolVar> selected_orders, int nAisles, List<BoolVar> selected_aisles, Set<Integer> fixed_selected_aisles) {
+    protected PartialResult calculatePartialResult(CpSolver solver, CpModel model, List<BoolVar> selected_orders, List<BoolVar> selected_aisles, Set<Integer> fixed_selected_orders, Set<Integer> fixed_selected_aisles) {
         CpSolverStatus status = solver.solve(model);
 
         Set<Integer> finalOrders = new HashSet<>();
@@ -490,7 +560,7 @@ public class Solving {
         if (status == CpSolverStatus.OPTIMAL) {
             // revisar condicion .OPTIMAL
 
-            for (int i = 0; i < nOrders; i++) {
+            for (int i = 0; i < selected_orders.size(); i++) {
                 BoolVar x = selected_orders.get(i);
                 if (solver.value(x) == 1) {
                     finalOrders.add(i);
@@ -499,7 +569,7 @@ public class Solving {
             for (Integer a : fixed_selected_aisles) {
                 finalAisles.add(a);
             }
-            for (int i = 0; i < nAisles; i++) {
+            for (int i = 0; i < selected_aisles.size(); i++) {
                 BoolVar y = selected_aisles.get(i);
                 if (solver.value(y) == 1) {
                     finalAisles.add(i);
@@ -513,8 +583,8 @@ public class Solving {
             return new PartialResult(null, 0);
         }
     }
-    protected PartialResult calculatePartialResult(CpSolver solver, CpModel model, int nOrders, List<BoolVar> selected_orders, int nAisles, List<BoolVar> selected_aisles) {
-        return calculatePartialResult(solver, model, nOrders, selected_orders, nAisles, selected_aisles, Collections.emptySet());
+    protected PartialResult calculatePartialResult(CpSolver solver, CpModel model, List<BoolVar> selected_orders, List<BoolVar> selected_aisles) {
+        return calculatePartialResult(solver, model, selected_orders, selected_aisles, Collections.emptySet(), Collections.emptySet());
         // default value for fixed_selected_aisles is empty set
     }
 

@@ -4,6 +4,8 @@ import org.apache.commons.lang3.time.StopWatch;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ChallengeSolver {
     private final long MAX_RUNTIME = 599000; // milliseconds; 10 minutes - 1 second
@@ -30,14 +32,19 @@ public class ChallengeSolver {
         
         // Implement your solution here
         PartialResult bestSolution = new PartialResult(null, 0);
-        
+
+        float meanOrderSize = calculateMeanOrderSize(IntStream.range(0, orders.size()).boxed().collect(Collectors.toSet()));
+        float meanAisleCapacity = calculateMeanAisleCapacity(IntStream.range(0, aisles.size()).boxed().collect(Collectors.toSet()));
+
         // problem parameters
         System.out.println("Orders number: " + orders.size());
         System.out.println("Aisles number: " + aisles.size());
         System.out.println("Items number: " + nItems);
         System.out.println("Wave size bounds: [" + waveSizeLB + ", " + waveSizeUB + "]");
+        System.out.println("Mean order size: " + meanOrderSize);
+        System.out.println("Mean aisle capacity: " + meanAisleCapacity);
 
-        // // Metodo 1 ---
+        // // Metodo 1 --- iterar sobre la cantidad de pasillos comenzando desde el minimo factible
         // // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
         // bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch);
         // if (bestSolution.partialSolution() == null) {
@@ -49,30 +56,39 @@ public class ChallengeSolver {
         // // start iterating with minimumAisles
         // // -------------------------------------------------------------------------------
 
-        // Metodo 2 ---
-        // iterar sobre la cantidad de pasillos (desde 1 hasta el total) ------------
-        bestSolution = solveWithFixedAisles(bestSolution, stopWatch);
-        // start with 1 aisle
-        // -------------------------------------------------------------------------------
+        // // Metodo 2 --- iterar sobre la cantidad de pasillos desde 1 hasta el total
+        // bestSolution = solveWithFixedAisles(bestSolution, stopWatch);
+        // // start with 1 aisle
+        // // -------------------------------------------------------------------------------
 
-        // // Metodo 3 ---
-        // // iterar sobre la cantidad de items (desde LB hasta UB) -> poco eficiente------------
+        // // Metodo 3 --- iterar sobre la cantidad de items (desde LB hasta UB)
+        // // -> poco eficiente------------
         // bestSolution = solveWithFixedItems(bestSolution, stopWatch);
         // // -------------------------------------------------------------------------------
 
-        // Metodo 4 ---
-        // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
+        // // Metodo 4 --- iterar sobre la cantidad de pasillos, seleccionando los pasillos con mayor capacidad
+        // // resolver buscando la cantidad minima de pasillos e iterar desde ahi ------------
         // bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch);
         // if (bestSolution.partialSolution() == null) {
         //     System.out.println("No feasible solution found, stopping.");
         //     return null; // No feasible solution found (for the whole problem)
         // }
         // int minimumAisles = bestSolution.partialSolution().aisles().size();
-        // bestSolution = solveWithSelectedAisles(bestSolution, stopWatch);
-        // start iterating with minimumAisles
+        // // int minimumAisles = 1;
+        // bestSolution = solveWithSelectedAisles(bestSolution, stopWatch, minimumAisles);
+        // // start iterating with minimumAisles
+        // // -------------------------------------------------------------------------------
+
+        // Metodo 5 --- seleccionar ordenes al azar y minimizar pasillos necesarios
+        int maxIterations = 100;
+        int n = 1;
+        int gap = (int) Math.ceil((waveSizeUB - waveSizeLB) / 100.0) * n; // n% of the range [LB, UB]
+        int LB = waveSizeLB + gap*10; // starting point: LB+gap*s, with s in [0,99]
+        int UB = LB + gap;
+        bestSolution = solveWithSelectedOrders(bestSolution, stopWatch, LB, UB, maxIterations); // adapt waveSize
+        // bestSolution = solveWithSelectedOrders(bestSolution, stopWatch, maxIterations);
         // -------------------------------------------------------------------------------
 
-        
         // retrieve the final best solution
         System.out.println("\nBest solution found with value " + bestSolution.objValue());
         System.out.println("Final remaining time: " + getRemainingTime(stopWatch) + " seconds");
@@ -273,6 +289,98 @@ public class ChallengeSolver {
         // default value for initialAislesNumber is 1
     }
 
+    protected PartialResult solveWithSelectedOrders(PartialResult bestSolution, StopWatch stopWatch, int LB, int UB, int iterations) {
+        System.out.println("\n>> solveWithSelectedOrders");
+
+        Random random = new Random(123);
+        int feasibleSolutions = 0;
+
+        if (LB == 0) {
+            LB = 1;
+        }
+
+        // iterate over the number of orders
+        for (int k = 1; iterations == -1 || k <= iterations; k++) {
+
+            int N = random.nextInt(UB - LB + 1) + LB; // cantidad de items aleatoria entre [LB, UB]
+            System.out.println("\nIteration " + k + " with N=" + N + " items");
+
+            Set<Integer> remainingOrders = IntStream.range(0, orders.size()).boxed().collect(Collectors.toSet());
+            Set<Integer> selectedOrders = new HashSet<>();
+            int waveSize = 0;
+            long remainingTime = getRemainingTime(stopWatch);
+            while (remainingTime - getRemainingTime(stopWatch) < 10) {
+                
+                int order = randomOrder(random, remainingOrders);                
+                if (order == -1) {
+                    System.out.println("No orders found in the list.");
+                    return bestSolution;
+                }
+
+                int orderSize = 0;
+                for (Map.Entry<Integer, Integer> entry : orders.get(order).entrySet()) {
+                    orderSize += entry.getValue();
+                }
+
+                if (waveSize + orderSize > N) {
+                    if (waveSize < waveSizeLB) {
+                        continue; // Not enough items selected, trying next order
+                    } else {
+                        break; // Wave size exceeded N, stopping selection
+                    }
+                }
+
+                selectedOrders.add(order);
+                remainingOrders.remove(order);
+                waveSize += orderSize;
+            }
+            
+            if (getRemainingTime(stopWatch) == 0) {
+                System.out.println("Max runtime reached, stopping iteration over random selected orders.");
+                break;
+            } // stop iteration if no time left
+            System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
+
+            // solve
+            System.out.println("Minimizing visited aisles for selected orders (with N=" + N + " items)");
+            // System.out.println("Picked orders: " + Arrays.toString(selectedOrders.toArray()));
+            PartialResult partialResult = solving.problem2b(selectedOrders, getRemainingTime(stopWatch));
+
+            if (partialResult.partialSolution() == null) {
+                System.out.println("No feasible solution found for iteration " + k);
+                continue;
+            } // no feasible
+
+            // show optimal for k orders
+            System.out.println("Partial Solution:");
+            System.out.println("Selected orders = " + partialResult.partialSolution().orders());
+            System.out.println("Selected aisles = " + partialResult.partialSolution().aisles());
+            System.out.println("Objective value = " + partialResult.objValue());
+            feasibleSolutions++;
+
+            // update best solution
+            if (partialResult.objValue() > bestSolution.objValue()) {
+                bestSolution = partialResult;
+            }
+
+        }
+
+        System.out.println("Done iterating over random selected orders: " + iterations + " iterations");
+        System.out.println("Best solution found with value " + bestSolution.objValue());
+        System.out.println("Feasibility rate: " + (feasibleSolutions / (float) iterations));
+
+        return bestSolution;
+    }
+    protected PartialResult solveWithSelectedOrders(PartialResult bestSolution, StopWatch stopWatch) {
+        return solveWithSelectedOrders(bestSolution, stopWatch, waveSizeLB, waveSizeUB, -1);
+    }
+    protected PartialResult solveWithSelectedOrders(PartialResult bestSolution, StopWatch stopWatch, int iterations) {
+        return solveWithSelectedOrders(bestSolution, stopWatch, waveSizeLB, waveSizeUB, iterations);
+    }
+    protected PartialResult solveWithSelectedOrders(PartialResult bestSolution, StopWatch stopWatch, int LB, int UB) {
+        return solveWithSelectedOrders(bestSolution, stopWatch, LB, UB, -1);
+    }
+
 
     /*
      * Get the remaining time in seconds
@@ -282,6 +390,16 @@ public class ChallengeSolver {
                 TimeUnit.SECONDS.convert(MAX_RUNTIME - stopWatch.getTime(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS),
                 0);
     }
+
+    public int randomOrder(Random random, Set<Integer> ordersList) {
+        if (ordersList.isEmpty()) {
+            return -1;
+        }
+        int index = random.nextInt(ordersList.size());
+        Integer[] array = ordersList.toArray(new Integer[0]);
+        return array[index];
+    }   
+
 
     
     public int maxCapacityAisle(Set<Integer> aislesList) {
@@ -306,6 +424,38 @@ public class ChallengeSolver {
         }
         System.out.println("Max aisle: " + maxAisle + " with capacity " + max);
         return maxAisle;
+    }
+
+    public float calculateMeanAisleCapacity(Set<Integer> aislesList) {
+
+        float mean = 0;
+        int aisleCapacity = 0;
+
+        for (int aisle : aislesList) { // each aisle
+            aisleCapacity = 0;
+            for (Map.Entry<Integer, Integer> entry : aisles.get(aisle).entrySet()) {
+                aisleCapacity += entry.getValue(); // each item
+            }
+            mean += aisleCapacity / (float) aisles.size();
+        }
+
+        return mean;
+    }
+
+    public float calculateMeanOrderSize(Set<Integer> ordersList) {
+
+        float mean = 0;
+        int orderSize = 0;
+
+        for (int order : ordersList) { // each order
+            orderSize = 0;
+            for (Map.Entry<Integer, Integer> entry : orders.get(order).entrySet()) {
+                orderSize += entry.getValue(); // each item
+            }
+            mean += orderSize / (float) orders.size();
+        }
+        
+        return mean;
     }
 
     protected boolean isSolutionFeasible(ChallengeSolution challengeSolution) {
