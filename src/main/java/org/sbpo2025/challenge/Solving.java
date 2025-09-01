@@ -30,7 +30,7 @@ public class Solving {
     protected int nItems;
     protected int waveSizeLB;
     protected int waveSizeUB;
-    protected boolean enableOutput = false; // Enable or disable solver output
+    protected boolean enableOutput = true; // Enable or disable solver output
 
     public Solving(ChallengeSolver challengeSolver) {
         this.orders = challengeSolver.orders;
@@ -317,7 +317,7 @@ public class Solving {
         // Variables
         List<MPVariable> selected_aisles = getVariablesAisles(solver, nAisles);
         
-        // available capacity constraint, considering fixed aisles (only order variables)
+        // available capacity constraint, considering fixed orders (only aisle variables)
         makeAvailableCapacityConstraint(solver, Collections.emptyList(), selected_aisles, selectedOrders, Collections.emptySet());
 
         // Objective
@@ -335,6 +335,59 @@ public class Solving {
         PartialResult partialResult = calculatePartialResult(solver, objective, Collections.emptyList(), selected_aisles, selectedOrders, Collections.emptySet());
 
         return new PartialResult(partialResult.partialSolution(), waveSize / partialResult.objValue()); // Original problem objective value
+    }
+
+    /**
+     * Problem 2.c: Solve the problem assuming a subset of selected aisles (fixed), and a subset of selected orders (that can be modified)
+     * @return the solution to the problem (optimal for the given subset of aisles and preselected orders)
+     */
+    protected PartialResult problem2c(Set<Integer> selectedAisles, Set<Integer> preSelectedOrders, long remainingTime) {
+        // Solver
+        Loader.loadNativeLibraries();
+        MPSolver solver = MPSolver.createSolver("SCIP");
+        if (solver == null) {
+            System.out.println("Could not create solver SCIP");
+            return new PartialResult(null, 0);
+            // return null;
+        }
+
+        // Variables
+        int nOrders = orders.size();
+        List<MPVariable> selected_orders = getVariablesOrders(solver, nOrders);
+
+        // Fix preselected orders
+        makePreSelectionConstraint(solver, selected_orders, preSelectedOrders);
+
+        // General problem constraints, but with fixed aisles
+        makeWaveBoundsConstraint(solver, nOrders, selected_orders, Collections.emptyList(), waveSizeLB, waveSizeUB);
+        
+        // available capacity constraint, considering fixed aisles (only order variables)
+        makeAvailableCapacityConstraint(solver, selected_orders, Collections.emptyList(), preSelectedOrders, selectedAisles);
+
+
+        // Objective
+        MPObjective objective = solver.objective();
+        for (int o = 0; o < nOrders; o++) {
+            Map<Integer, Integer> order = orders.get(o);
+            int coeff = 0;
+            Collection<Integer> quantities = order.values();
+            for (Integer quantity: quantities) {
+                coeff += quantity;
+            }
+            MPVariable x = selected_orders.get(o);
+            
+            objective.setCoefficient(x, coeff);
+            // sumar las ordenes preseleccionadas como constante ?
+            // TODO
+        }
+        objective.setMaximization();
+
+        solver.setTimeLimit(remainingTime * 1000); // Convert seconds to milliseconds
+        if (enableOutput) {
+            solver.enableOutput();
+        }
+        PartialResult partialResult = calculatePartialResult(solver, objective, selected_orders, Collections.emptyList(), Collections.emptySet(), selectedAisles);
+        return new PartialResult(partialResult.partialSolution(), partialResult.objValue() / selectedAisles.size()); // Normalize the objective value by the number of selected aisles
     }
 
     
@@ -429,7 +482,11 @@ public class Solving {
             if (!selected_orders.isEmpty()) {
                 for (int o = 0; o < selected_orders.size(); o++) {
                     MPVariable x = selected_orders.get(o); // try get the order from the variables
-                    if (x != null) {
+
+                    if (fixed_selected_orders.contains(o)) {
+                        available_capacity.setCoefficient(x, 0); // Fixed order, no capacity needed
+
+                    } else if (x != null) {
                         Integer coeff = orders.get(o).get(i);
                         if (coeff == null) coeff = 0;
                         available_capacity.setCoefficient(x, coeff);
@@ -441,7 +498,11 @@ public class Solving {
             if (!selected_aisles.isEmpty()) {
                 for (int a = 0; a < selected_aisles.size(); a++) {
                     MPVariable y = selected_aisles.get(a); // try get the aisle from the variables
-                    if (y != null) {
+
+                    if (fixed_selected_aisles.contains(a)) {
+                        available_capacity.setCoefficient(y, 0); // Fixed aisle, no capacity needed
+
+                    } else if (y != null) {
                         Integer coeff = aisles.get(a).get(i);
                         if (coeff == null) coeff = 0;
                         available_capacity.setCoefficient(y, -coeff);
@@ -500,6 +561,15 @@ public class Solving {
         makeAvailableCapacityConstraint(model, selected_orders, selected_aisles, Collections.emptySet(), Collections.emptySet());
     }
 
+    protected void makePreSelectionConstraint(MPSolver solver, List<MPVariable> selected_orders, Set<Integer> preSelectedOrders) {
+
+        for (int o : preSelectedOrders) {
+            MPVariable x = selected_orders.get(o);
+            MPConstraint fixedOrderConstraint = solver.makeConstraint(1, 1, "Fix order " + o);
+            fixedOrderConstraint.setCoefficient(x, 1);
+        }
+
+    }
 
     // solve
     protected PartialResult calculatePartialResult(MPSolver solver, MPObjective objective, List<MPVariable> selected_orders, List<MPVariable> selected_aisles, Set<Integer> fixed_selected_orders, Set<Integer> fixed_selected_aisles) {
