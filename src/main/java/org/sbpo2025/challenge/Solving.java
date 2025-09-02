@@ -30,7 +30,7 @@ public class Solving {
     protected int nItems;
     protected int waveSizeLB;
     protected int waveSizeUB;
-    protected boolean enableOutput = true; // Enable or disable solver output
+    protected boolean enableOutput = false; // Enable or disable solver output
 
     public Solving(ChallengeSolver challengeSolver) {
         this.orders = challengeSolver.orders;

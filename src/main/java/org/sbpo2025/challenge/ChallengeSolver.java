@@ -9,6 +9,7 @@ import java.util.stream.IntStream;
 
 public class ChallengeSolver {
     private final long MAX_RUNTIME = 599000; // milliseconds; 10 minutes - 1 second
+    // private final long MAX_RUNTIME = 5990; // para testear timeout
 
     protected List<Map<Integer, Integer>> orders;
     protected List<Map<Integer, Integer>> aisles;
@@ -55,7 +56,7 @@ public class ChallengeSolver {
         
         // Implement your solution here
         PartialResult bestSolution = new PartialResult(null, 0);
-        // PartialResult nullSolution = new PartialResult(null, 0);
+        PartialResult nullSolution = new PartialResult(null, 0);
 
         double[] orderStats = calculateMeanOrderSize(IntStream.range(0, orders.size()).boxed().collect(Collectors.toSet()));
         double meanOrderSize = orderStats[0];
@@ -73,7 +74,6 @@ public class ChallengeSolver {
         System.out.println("Mean order items: " + meanOrderItems);
         System.out.println("Mean aisle capacity: " + meanAisleCapacity);
         System.out.println("Mean aisle items: " + meanAisleItems);
-        // System.out.println("Items: " + items);
 
         // Random random = new Random(1234);
 
@@ -170,65 +170,145 @@ public class ChallengeSolver {
         //         break;
         //     }
         //     bestSolution = solveSuperAisleGreedySelection(bestSolution, stopWatch, k);
+        //     // PartialResult newSolution = solveSuperAisleGreedySelection(nullSolution, stopWatch, k);
+        //     // newSolution = solveWithPreSelection(newSolution, stopWatch);
+        //     // if (newSolution != null && newSolution.objValue() > bestSolution.objValue()) {
+        //     //     bestSolution = newSolution;
+        //     // }
+        // }
+        // int bestAislesNumber = bestSolution.partialSolution().aisles().size();
+        // -------------------------------------------------------------------------------
+
+        // // Metodo 8.2 --- algoritmo greedy para seleccionar ordenes sobre un subconjunto de pasillos
+        // // mantener cantidad de pasillos fija, pero seleccionar aleatoriamente
+        // System.out.println("\n-> Random selection of aisles");
+        // for (int i=0; i<10; i++) {
+        //     System.out.println("Iteration " + (i+1));
+        //     int k = bestAislesNumber;
+        //     int n = (int)(bestAislesNumber*1.5);
+        //     Set<Integer> selectedAisles = getRandomAislesSubset(k, getBestAislesSubset(n), random);
+        //     bestSolution = solveSuperAisleGreedySelection(bestSolution, stopWatch, selectedAisles);
+        //     bestSolution = solveWithAisleSubset(bestSolution, stopWatch, selectedAisles);
         // }
         // // -------------------------------------------------------------------------------
 
+        // // Metodo 9 --- algoritmo de búsqueda tabú
+        // int K = bestAislesNumber; // número de pasillos a considerar
+        // int p = (int)Math.ceil(K*0.3); // número de elementos a intercambiar
+        // // p = 1;
+        // int n = 3*K; // tamaño del vecindario
+        // int maxIterations = 20;
+        // PartialResult newSolution = tabuSearch(nullSolution, stopWatch, K, p, n, maxIterations);
+        // bestSolution = solveWithAisleSubset(bestSolution, stopWatch, newSolution.partialSolution().aisles());
+        // // -------------------------------------------------------------------------------
 
-        // bestSolution = solveWithSelectedAisles(bestSolution, stopWatch, 9);
-        // -> buscar solucion con los "minimumAisles" pasillos con mas capacidad  -> probar performance
-
+        // bestSolution = solveWithFixedAisles(bestSolution, stopWatch, 10,10);
 
         // #########################################################################################
         // Metodo Final Completo
-        // 1) Obtener minimo factible de pasillos (aproximado)
+        // 1) Estimar valor objetivo para cada cantidad de pasillos
         // greedy sobre un super-pasillo ficticio compuesto por un subconjunto de "minimumAisles" pasillos
         int minimumAisles = 1; // minimo por defecto
+        Map<Integer, Double> candidateAisleNumbers = new HashMap<>();
+
         boolean feasibleSolutionFound = false;
         for (int k = 1; k <= aisles.size(); k++) {
-            bestSolution = solveSuperAisleGreedySelection(bestSolution, stopWatch, k);
-            if (bestSolution.partialSolution() != null && !feasibleSolutionFound) {
-                minimumAisles = k; // actualizar minimo si es la primera factible
-                feasibleSolutionFound = true;
+            PartialResult newSolution = solveSuperAisleGreedySelection(nullSolution, stopWatch, k);
+            candidateAisleNumbers.put(k, newSolution.objValue());
+            // bestSolution = solveSuperAisleGreedySelection(bestSolution, stopWatch, k);
+            if (newSolution.partialSolution() != null) {
+                if (!feasibleSolutionFound) {
+                    minimumAisles = k; // actualizar minimo si es la primera factible
+                    feasibleSolutionFound = true;
+                }
+                if (newSolution.objValue() > bestSolution.objValue()) {
+                    bestSolution = newSolution;
+                }
             }
             if (bestSolution.objValue() >= waveSizeUB/(k+1)) {
                 System.out.println("Current best solution with value " + bestSolution.objValue() + " is already better than the maximum possible for k >= " + (k+1));
                 break;
             }
         }
-        // int bestAislesNumber = bestSolution.partialSolution().aisles().size();
+        bestSolution = solveWithAisleSubset(bestSolution, stopWatch, bestSolution.partialSolution().aisles());
+        candidateAisleNumbers.put(bestSolution.partialSolution().aisles().size(), bestSolution.objValue());
+        
         // 2) metodo exacto para instancias pequeñas
+        boolean exactMinimumAisles = false;
         if (orders.size() <= 15000 && nItems <= 10000) {
             System.out.println("\n-> using exact method for small instances");
             // boolean exactMinimumAisles = false;
-            bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch); // limitar mas en tiempo? TODO
+            bestSolution = solveMinimumFeasibleAisles(bestSolution, stopWatch, 60); // se limita en tiempo
             if (bestSolution.partialSolution() == null) {
                 System.out.println("No feasible solution found, stopping.");
-                return null; // No feasible solution found (for the whole problem)
-            }
-            minimumAisles = bestSolution.partialSolution().aisles().size();
-            // exactMinimumAisles = true;
-            // bestSolution = solveWithFixedAisles(bestSolution, stopWatch, bestAislesNumber, bestAislesNumber); // metodo exacto iterando sobre nAisles
-            bestSolution = solveWithFixedAisles(bestSolution, stopWatch, minimumAisles, aisles.size(), 5); // metodo exacto iterando sobre nAisles
-            bestSolution = solveWithFixedAisles(bestSolution, stopWatch, 1, minimumAisles);
-        } else { // version reducida con heuristica de considerar los pasillos con mas capacidad
-            if (meanOrderItems > 1) {
-            // System.out.println("\n>> meanOrderItems > 1: using alternative method");
-            }
-            if (feasibleSolutionFound) { 
-                System.out.println("\n-> using heuristic method with selected aisles, max iterations without improvement = 3");
-                bestSolution = solveWithSelectedAisles(bestSolution, stopWatch, minimumAisles, 3);
+                // return null; // No feasible solution found (for the whole problem) or timeout
             } else {
-                bestSolution = solveWithSelectedAisles(bestSolution, stopWatch);
+                minimumAisles = bestSolution.partialSolution().aisles().size();
+                candidateAisleNumbers.put(minimumAisles, bestSolution.objValue());
+                exactMinimumAisles = true;
+                final int minimumAislesFinal = minimumAisles;
+                candidateAisleNumbers.entrySet().removeIf(entry -> entry.getKey() < minimumAislesFinal);
+            }
+        }
+
+        if (!exactMinimumAisles) {
+            for (int k = 1; k < minimumAisles; k++) {
+                candidateAisleNumbers.put(k, 0.0);
+            }
+            candidateAisleNumbers.put(minimumAisles-1, bestSolution.objValue()); // probar factibilidad con uno pasillo menos
+        }
+
+        candidateAisleNumbers = candidateAisleNumbers.entrySet()
+            .stream()
+            .sorted((e1, e2) -> {
+                int valueCompare = Double.compare(e2.getValue(), e1.getValue()); // Descending by value
+                if (valueCompare != 0) {
+                    return valueCompare;
+                } else {
+                    return Integer.compare(e2.getKey(), e1.getKey()); // Descending by key if values are equal
+                }
+            })
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                Map.Entry::getValue,
+                (e1, e2) -> e1,
+                LinkedHashMap::new
+            ));
+
+        for (Integer key : candidateAisleNumbers.keySet()) System.out.println("\n-> Key: " + key + ", Value: " + candidateAisleNumbers.get(key));
+        
+        if (exactMinimumAisles) {
+            bestSolution = solveWithFixedAisles(bestSolution, stopWatch, minimumAisles, aisles.size(), 5); // metodo exacto iterando sobre nAisles
+        } else {
+            for (Integer key : candidateAisleNumbers.keySet()) {
+                if (getRemainingTime(stopWatch) < 1) {
+                    System.out.println("Max runtime reached, stopping iteration over candidate aisles.");
+                    break;
+                }
+                System.out.println("\n-> Key: " + key + ", Value: " + candidateAisleNumbers.get(key));
+                if (meanOrderItems > 1) {
+                    bestSolution = solveWithFixedAisles(bestSolution, stopWatch, key, key); // metodo exacto para key pasillos
+                } else {
+                    bestSolution = solveWithAisleSubset(bestSolution, stopWatch,
+                        getBestAislesSubset(key)
+                    ); // metodo exacto para key pasillos
+                }
             }
         }
         // fin #########################################################################
         
     
-
-
         // retrieve the final best solution
         System.out.println("\nBest solution found with value " + bestSolution.objValue());
         System.out.println("Final remaining time: " + getRemainingTime(stopWatch) + " seconds");
+
+        int capacity = totalCapacity(bestSolution.partialSolution().aisles());
+        int demand = totalDemand(bestSolution.partialSolution().orders());
+        System.out.println("Total capacity = " + capacity);
+        System.out.println("Total demand = " + demand);
+        System.out.println("Total capacity left = " + (capacity - demand) + " = " + (((double) (capacity - demand)/capacity)*100)+ "%");
+        
+
         return bestSolution.partialSolution();
     }
 
@@ -249,7 +329,7 @@ public class ChallengeSolver {
                 break;
             }
 
-            if (getRemainingTime(stopWatch) == 0) {
+            if (getRemainingTime(stopWatch) < 1) {
                 System.out.println("Max runtime reached, stopping iteration over k.");
                 break;
             } // stop iteration if no time left
@@ -294,7 +374,7 @@ public class ChallengeSolver {
         }
 
         System.out.println("Done iterating over k (fixed aisles)");
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
         return bestSolution;
     }
@@ -317,7 +397,7 @@ public class ChallengeSolver {
         // iterate over the number of items: UB, UB-1, ..., LB
         for (int k = waveSizeUB; k >= waveSizeLB; k--) {
 
-            if (getRemainingTime(stopWatch) == 0) {
+            if (getRemainingTime(stopWatch) < 1) {
                 System.out.println("Max runtime reached, stopping iteration over k.");
                 break;
             }   // stop iteration if no time left
@@ -354,19 +434,20 @@ public class ChallengeSolver {
         }
 
         System.out.println("Done iterating over k (fixed items)");
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
 
         return bestSolution;
     }
 
-    protected PartialResult solveMinimumFeasibleAisles(PartialResult bestSolution, StopWatch stopWatch) {
+    protected PartialResult solveMinimumFeasibleAisles(PartialResult bestSolution, StopWatch stopWatch, int timeLimit) {
         System.out.println("\n>> solveMinimumFeasibleAisles");
         System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
+        System.out.println("Time limit for solveMinimumFeasibleAisles: " + timeLimit + " seconds");
 
         // solve
         System.out.println("Minimizing visited aisles");
-        PartialResult partialResult = solving.problem1c(getRemainingTime(stopWatch));
+        PartialResult partialResult = solving.problem1c(timeLimit);
 
         if (partialResult.partialSolution() == null) {
             System.out.println("No feasible solution found");
@@ -423,7 +504,7 @@ public class ChallengeSolver {
                 break;
             }
 
-            if (getRemainingTime(stopWatch) == 0) {
+            if (getRemainingTime(stopWatch) < 1) {
                 System.out.println("Max runtime reached, stopping iteration over k.");
                 break;
             } // stop iteration if no time left
@@ -462,7 +543,7 @@ public class ChallengeSolver {
         }
 
         System.out.println("Done iterating over k (fixed aisles)");
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
         return bestSolution;
     }
@@ -473,6 +554,30 @@ public class ChallengeSolver {
     protected PartialResult solveWithSelectedAisles(PartialResult bestSolution, StopWatch stopWatch, int initialAislesNumber) {
         return solveWithSelectedAisles(bestSolution, stopWatch, initialAislesNumber, aisles.size());
         // default max iterations = total number of aisles - initial number of aisles
+    }
+
+    protected PartialResult solveWithAisleSubset(PartialResult bestSolution, StopWatch stopWatch, Set<Integer> selectedAisles) {
+        System.out.println("\n>> solveWithAisleSubset");
+
+        // solve
+        System.out.println("\nMaximizing picked items for picked aisles: " + Arrays.toString(selectedAisles.toArray()));
+        PartialResult partialResult = solving.problem2a(selectedAisles, getRemainingTime(stopWatch));
+    
+        if (partialResult.partialSolution() == null) {
+            System.out.println("No feasible solution found");
+            return bestSolution;
+        } // no feasible
+            
+        System.out.println("Objective value = " + partialResult.objValue());
+        double usedCapacity = (1 - totalCapacityLeft(partialResult.partialSolution())) * 100.0;
+        System.out.println(String.format("Total capacity used = %.2f%%", usedCapacity));
+            
+        // update best solution
+        if (partialResult.objValue() > bestSolution.objValue()) {
+            bestSolution = partialResult;
+        }
+
+        return bestSolution;
     }
 
     protected PartialResult solveWithSelectedOrders(PartialResult bestSolution, StopWatch stopWatch) {
@@ -521,6 +626,11 @@ public class ChallengeSolver {
         // iterate over the number of orders
         for (int k = 1; iterations == -1 || k <= iterations; k++) {
 
+            if (getRemainingTime(stopWatch) < 1) {
+                    System.out.println("Max runtime reached, stopping iteration over random selected orders.");
+                    break;
+                }
+
             int N = random.nextInt(UB - LB + 1) + LB; // cantidad de items aleatoria entre [LB, UB]
             System.out.println("\nIteration " + k + " with N=" + N + " items");
 
@@ -532,7 +642,7 @@ public class ChallengeSolver {
 
             while (remainingTime - getRemainingTime(stopWatch) < 10) {
 
-                if (getRemainingTime(stopWatch) == 0) {
+                if (getRemainingTime(stopWatch) < 1) {
                     System.out.println("Max runtime reached, stopping iteration over random selected orders.");
                     break;
                 } // stop iteration if no time left
@@ -589,7 +699,7 @@ public class ChallengeSolver {
         }
 
         System.out.println("Done iterating over random selected orders: " + iterations + " iterations");
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
         System.out.println("Feasibility rate: " + (feasibleSolutions / (double) iterations));
 
         return bestSolution;
@@ -618,7 +728,7 @@ public class ChallengeSolver {
         // iterate over the number of aisles
         for (int k = 1; k <= aisles.size(); k++) {
 
-            if (getRemainingTime(stopWatch) == 0) {
+            if (getRemainingTime(stopWatch) < 1) {
                 System.out.println("Max runtime reached, stopping iteration over k.");
                 break;
             } // stop iteration if no time left
@@ -730,7 +840,7 @@ public class ChallengeSolver {
             // iterate over the number of aisles
             for (int k = 1; k <= aisles.size(); k++) {
 
-                if (getRemainingTime(stopWatch) == 0) {
+                if (getRemainingTime(stopWatch) < 1) {
                     System.out.println("Max runtime reached, stopping iteration over k.");
                     break;
                 }
@@ -817,35 +927,21 @@ public class ChallengeSolver {
         }
 
         System.out.println("Done iterating over random greedy selection");
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
         return bestSolution;
     }
 
-    protected PartialResult solveSuperAisleGreedySelection(PartialResult bestSolution, StopWatch stopWatch, int nAisles, Random random) {
+    protected PartialResult solveSuperAisleGreedySelection(PartialResult bestSolution, StopWatch stopWatch, Set<Integer> selectedAisles, Random random) {
         System.out.println("\n>> solveSuperAisleGreedySelection");
 
         // Implementar el algoritmo greedy para seleccionar órdenes sobre un subconjunto de pasillos
 
-        Set<Integer> selectedAisles = new HashSet<>();
-        Set<Integer> remainingAisles = IntStream.range(0, aisles.size()).boxed().collect(Collectors.toSet());
+        
+        int nAisles = selectedAisles.size();
 
-        Set<Integer> selectedOrders = new HashSet<>();
-
-        // select aisles subset
-        for (int k = 1; k <= nAisles; k++) {
-
-            int aisle = maxCapacityAisle(remainingAisles);
-            if (aisle == -1) {
-                System.out.println("No aisles found in the list.");
-                break;
-            }
-            remainingAisles.remove(aisle);
-            selectedAisles.add(aisle);
-            
-        }
         System.out.println("\nGreedy selection over super-aisle with k = " + nAisles + " aisles");
-
+        
         // Crear un "super-pasillo" ficticio que combine los nAisles pasillos seleccionados
         // set items stock
         for (Item item : items) {
@@ -857,53 +953,7 @@ public class ChallengeSolver {
             }
         }
 
-        // recorrer items para seleccionar ordenes
-        int waveSize = 0;
-
-        List<Item> shuffledItems = new ArrayList<>(items);
-        Collections.shuffle(shuffledItems, random);
-        for (Item item : shuffledItems) { // for item in aisle
-
-            List<Map.Entry<Integer, Integer>> shuffledOrders = new ArrayList<>(item.orders.entrySet());
-            Collections.shuffle(shuffledOrders, random);
-            for (Map.Entry<Integer, Integer> order : shuffledOrders) { // for order with this item
-
-                int orderId = order.getKey();
-                int orderDemand = 0;
-
-                boolean enoughStock = true;
-                // Check if the order can be fulfilled
-                if (item.stock < order.getValue()) { // check only "item"
-                    enoughStock = false;
-                }
-                for (Map.Entry<Integer, Integer> entry : orders.get(orderId).entrySet()) { // check all items
-                    Item itemNeeded = items.get(entry.getKey());
-                    int itemQuantity = entry.getValue();
-                    orderDemand += itemQuantity;
-
-                    if (itemNeeded.stock < itemQuantity) {
-                        enoughStock = false; // Not enough stock for item found
-                        break;
-                    }
-                }
-                if (!enoughStock || waveSize + orderDemand > waveSizeUB) { // do not exceed upper bound
-                    continue;
-                }
-
-                selectedOrders.add(orderId);
-
-                // update stock
-                for (Map.Entry<Integer, Integer> entry : orders.get(orderId).entrySet()) { // for item in order
-                    Item itemNeeded = items.get(entry.getKey());
-                    int itemQuantity = entry.getValue();
-                    
-                    itemNeeded.removeStock(itemQuantity);
-                }
-
-                waveSize += orderDemand;
-            }
-        }
-
+        Set<Integer> selectedOrders = selectOrders(random);
 
         PartialResult partialResult = generatePartialResult(selectedOrders, selectedAisles);
 
@@ -928,12 +978,16 @@ public class ChallengeSolver {
             bestSolution = partialResult;
         }
 
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
         return bestSolution;
     }
     protected PartialResult solveSuperAisleGreedySelection(PartialResult bestSolution, StopWatch stopWatch, int nAisles) {
-        return solveSuperAisleGreedySelection(bestSolution, stopWatch, nAisles, new Random(12)); // semilla por defecto
+        Set<Integer> selectedAisles = getBestAislesSubset(nAisles); // por defecto se elijen los pasillos con mas capacidad
+        return solveSuperAisleGreedySelection(bestSolution, stopWatch, selectedAisles, new Random(12)); // semilla por defecto
+    }
+    protected PartialResult solveSuperAisleGreedySelection(PartialResult bestSolution, StopWatch stopWatch, Set<Integer> selectedAisles) {
+        return solveSuperAisleGreedySelection(bestSolution, stopWatch, selectedAisles, new Random(12)); // semilla por defecto
     }
 
     protected PartialResult solveWithPreSelection(PartialResult bestSolution, StopWatch stopWatch) {
@@ -952,6 +1006,8 @@ public class ChallengeSolver {
                 selectedOrders.add(order);
             }
         }
+        
+        System.out.println("Remaining time: " + getRemainingTime(stopWatch) + " seconds");
 
         // solve
         System.out.println("\nMaximizing picked items for number of aisles k = " + selectedAisles.size());
@@ -971,10 +1027,103 @@ public class ChallengeSolver {
             bestSolution = partialResult;
         }
 
-        System.out.println("Best solution found with value " + bestSolution.objValue());
+        // System.out.println("Best solution found with value " + bestSolution.objValue());
 
         return bestSolution;
     }
+
+    protected PartialResult tabuSearch(PartialResult bestSolution, StopWatch stopWatch, int k, int p, int n, int maxIterations) {
+        System.out.println("\n>> Tabu Search");
+        System.out.println("Conjuntos de " + k + " pasillos");
+        System.out.println("Intercambiando " + p + " elementos");
+        System.out.println("Tamaño del vecindario: " + n);
+
+        int tabuTenure = 10;
+
+        Set<Integer> universe = IntStream.range(0, aisles.size()).boxed().collect(Collectors.toSet());
+
+        Random rand = new Random(42); // Semilla fija para reproducibilidad
+
+        // Solución inicial: los k mayores elementos
+        
+        Set<Integer> current = getBestAislesSubset(k);
+        PartialResult best = evaluate(current, stopWatch);
+
+        // Lista tabú: pares de intercambios recientes
+        Queue<Set<Integer>> tabuList = new LinkedList<>();
+
+        for (int iter = 0; iter < maxIterations; iter++) {
+            if (getRemainingTime(stopWatch) < 1) {
+                System.out.println("Max runtime reached, stopping iteration over k.");
+                break;
+            }
+
+            System.out.println("Iteracion " + (iter + 1) + " de " + maxIterations);
+            List<PartialResult> neighbors = new ArrayList<>();
+
+            // Generar vecinos por intercambios de p elementos
+            List<Integer> inSet = new ArrayList<>(current);
+            List<Integer> outSet = new ArrayList<>(universe);
+            outSet.removeAll(current);
+
+            PartialResult bestNeighbor = new PartialResult(null,0);
+
+            for (int i = 0; i < n; i++) { // Limitar vecinos por eficiencia
+                System.out.println("Generando vecino " + (i + 1) + " de " + n + " (iteracion " + (iter + 1) + ")");
+                Set<Integer> newSet = new HashSet<>(current);
+
+                // Seleccionar p elementos a remover y p a agregar
+                Collections.shuffle(inSet, rand);
+                Collections.shuffle(outSet, rand);
+                Set<Integer> removed = new HashSet<>(inSet.subList(0, p));
+                Set<Integer> added = new HashSet<>(outSet.subList(0, p));
+
+                newSet.removeAll(removed);
+                newSet.addAll(added);
+
+                if (tabuList.contains(added)) continue; // Evitar movimientos tabú
+
+                PartialResult neighbor = evaluate(newSet, stopWatch);
+                if (neighbor == null || neighbor.partialSolution() == null) continue; // No factible
+                neighbors.add(neighbor);
+                double score = neighbor.objValue();
+
+                if (score > bestNeighbor.objValue()) {
+                    bestNeighbor = neighbor;
+                    // Seleccionar mejor vecino
+                }
+            }
+
+            if (bestNeighbor == null || bestNeighbor.partialSolution() == null) continue; // No factible
+            current = bestNeighbor.partialSolution().aisles();
+
+            // Actualizar mejor global
+            if (bestNeighbor.objValue() > best.objValue()) {
+                best = bestNeighbor;
+            }
+
+            // Actualizar lista tabú
+            tabuList.add(new HashSet<>(current));
+            if (tabuList.size() > tabuTenure) tabuList.poll();
+        }
+
+        System.out.println("Best solution found with value " + bestSolution.objValue());
+        if (best.objValue() > bestSolution.objValue()) {
+            bestSolution = best;
+        }
+
+        return bestSolution;
+
+    }
+    protected PartialResult evaluate(Set<Integer> subset, StopWatch stopWatch) {
+        // Evaluate the objective value of the subset
+        // return solveWithAisleSubset(new PartialResult(null, 0), stopWatch, subset);
+        return solveSuperAisleGreedySelection(new PartialResult(null, 0), stopWatch, subset); // greedy
+
+    }
+
+
+
 
     /*
      * Get the remaining time in seconds
@@ -1025,6 +1174,105 @@ public class ChallengeSolver {
         }
         // System.out.println("Max aisle: " + maxAisle + " with capacity " + max);
         return maxAisle;
+    }
+
+    public Set<Integer> getBestAislesSubset(int nAisles) {
+        
+        Set<Integer> selectedAisles = new HashSet<>();
+        Set<Integer> remainingAisles = IntStream.range(0, aisles.size()).boxed().collect(Collectors.toSet());
+
+        // select aisles subset
+        for (int k = 1; k <= nAisles; k++) {
+
+            int aisle = maxCapacityAisle(remainingAisles);
+            if (aisle == -1) {
+                System.out.println("No aisles found in the list.");
+                break;
+            }
+            remainingAisles.remove(aisle);
+            selectedAisles.add(aisle);
+            
+        }
+
+        return selectedAisles;
+    }
+
+    public Set<Integer> getRandomAislesSubset(int nAisles, Set<Integer> aislesList, Random random) {
+        
+        Set<Integer> selectedAisles = new HashSet<>();
+        Set<Integer> remainingAisles = new HashSet<>(aislesList);
+
+        // select aisles subset
+        while (selectedAisles.size() < nAisles && !remainingAisles.isEmpty()) {
+            int aisle = randomAisle(random, remainingAisles);
+            if (aisle != -1) {
+                selectedAisles.add(aisle);
+                remainingAisles.remove(aisle);
+            }
+        }
+
+        return selectedAisles;
+    }
+    public Set<Integer> getRandomAislesSubset(int nAisles, Random random) {
+        return getRandomAislesSubset(nAisles, IntStream.range(0, aisles.size()).boxed().collect(Collectors.toSet()), random);
+        // todos los pasillos por defecto
+    }
+
+
+    
+
+    public Set<Integer> selectOrders(Random random) {
+
+        Set<Integer> selectedOrders = new HashSet<>();
+
+        // recorrer items para seleccionar ordenes
+        int waveSize = 0;
+
+        List<Item> shuffledItems = new ArrayList<>(items);
+        Collections.shuffle(shuffledItems, random);
+        for (Item item : shuffledItems) { // for item in aisle
+
+            List<Map.Entry<Integer, Integer>> shuffledOrders = new ArrayList<>(item.orders.entrySet());
+            Collections.shuffle(shuffledOrders, random);
+            for (Map.Entry<Integer, Integer> order : shuffledOrders) { // for order with this item
+
+                int orderId = order.getKey();
+                int orderDemand = 0;
+
+                boolean enoughStock = true;
+                // Check if the order can be fulfilled
+                if (item.stock < order.getValue()) { // check only "item"
+                    enoughStock = false;
+                }
+                for (Map.Entry<Integer, Integer> entry : orders.get(orderId).entrySet()) { // check all items
+                    Item itemNeeded = items.get(entry.getKey());
+                    int itemQuantity = entry.getValue();
+                    orderDemand += itemQuantity;
+
+                    if (itemNeeded.stock < itemQuantity) {
+                        enoughStock = false; // Not enough stock for item found
+                        break;
+                    }
+                }
+                if (!enoughStock || waveSize + orderDemand > waveSizeUB) { // do not exceed upper bound
+                    continue;
+                }
+
+                selectedOrders.add(orderId);
+
+                // update stock
+                for (Map.Entry<Integer, Integer> entry : orders.get(orderId).entrySet()) { // for item in order
+                    Item itemNeeded = items.get(entry.getKey());
+                    int itemQuantity = entry.getValue();
+                    
+                    itemNeeded.removeStock(itemQuantity);
+                }
+
+                waveSize += orderDemand;
+            }
+        }
+
+        return selectedOrders;
     }
 
     public int totalCapacity(Set<Integer> aislesList) {

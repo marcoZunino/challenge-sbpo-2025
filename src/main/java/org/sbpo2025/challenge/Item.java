@@ -35,11 +35,4 @@ public class Item {
         this.stock = 0;
     }
 
-    // public float averageDemand() {
-    //     return (float) this.orders.values().stream().mapToInt(Integer::intValue).average().orElse(0);
-    // }
-
-    // public float averageCapacity() {
-    //     return (float) this.aisles.values().stream().mapToInt(Integer::intValue).average().orElse(0);
-    // }
 }
